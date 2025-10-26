@@ -16,7 +16,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Auth GitHub App (utilise les secrets déjà en place)
+      # Auth GitHub App (utilise les secrets que tu as déjà mis)
       - name: Auth as GitHub App
         uses: tibdex/github-app-token@v2
         id: app
@@ -25,51 +25,43 @@ jobs:
           installation_id: ${{ secrets.APP_INSTALLATION_ID }}
           private_key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      - name: Extract patch blocks from comment
-        id: extract
+      - name: Extract patch from comment
+        id: patch
         run: |
           python3 - <<'PY'
-          import os, re, sys, pathlib
+          import os, re, sys
           body = os.environ["BODY"]
-
-          # Récupère TOUS les blocs ```patch ... ```
-          blocks = re.findall(r"```patch\s*\n(.*?)\n```", body, flags=re.S|re.I)
-          if not blocks:
-            print("::error::No ```patch``` code block found in the comment.")
-            sys.exit(1)
-
-          patch_path = pathlib.Path("/tmp/changes.patch")
-          content = "\n\n".join(b.strip() for b in blocks)
-          patch_path.write_text(content, encoding="utf-8")
-          print(f"Patch written to {patch_path}")
+          m = re.search(r"```patch\s*\n(.*?)\n```", body, re.S)
+          if not m:
+              print("::error::No ```patch``` block found in the comment.")
+              sys.exit(1)
+          with open("/tmp/changes.patch", "w", encoding="utf-8") as f:
+              f.write(m.group(1))
+          print("Patch extracted successfully.")
           PY
         env:
           BODY: ${{ github.event.comment.body }}
 
-      - name: Show patch (for logs)
+      - name: Show patch
         run: |
           echo "------ PATCH START ------"
-          sed -n '1,200p' /tmp/changes.patch || true
+          head -n 50 /tmp/changes.patch || true
           echo "------- PATCH END -------"
 
       - name: Check patch applies cleanly
-        shell: bash
         run: |
-          set -e
           if ! git apply --check /tmp/changes.patch; then
-            echo "::error::Patch does not apply cleanly. Ensure it's a valid unified git diff (starts with 'diff --git')."
+            echo "::error::Patch does not apply cleanly."
             exit 1
           fi
 
       - name: Apply patch
-        run: |
-          git apply --index /tmp/changes.patch
+        run: git apply --index /tmp/changes.patch
 
-      - name: Create branch and commit
+      - name: Commit & push
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
-          set -e
           BR="chat-update-${GITHUB_RUN_ID}"
           git checkout -b "$BR"
           git config user.name "chat-bot"
