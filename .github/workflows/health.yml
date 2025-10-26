@@ -1,0 +1,16 @@
+name: Health
+on:
+  workflow_dispatch: {}
+  schedule:
+    # Tous les jours à 08:00 Europe/Paris (06:00 UTC hiver / 07:00 UTC été)
+    - cron: "0 6 * * *"
+permissions:
+  contents: read
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          echo "✅ Health check OK"
+          echo "Repo: $GITHUB_REPOSITORY"
