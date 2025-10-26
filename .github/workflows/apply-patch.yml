@@ -1,0 +1,56 @@
+name: Apply Chat Patch
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  run:
+    if: contains(github.event.comment.body, '/apply-patch')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Auth GitHub App (utilise les secrets que tu as déjà mis)
+      - name: Auth as GitHub App
+        uses: tibdex/github-app-token@v2
+        id: app
+        with:
+          app_id: ${{ secrets.APP_ID }}
+          installation_id: ${{ secrets.APP_INSTALLATION_ID }}
+          private_key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Extract patch from comment
+        id: patch
+        run: |
+          python - << 'PY'
+          import os, re, sys, base64, textwrap
+          body = os.environ["BODY"]
+          m = re.search(r'```patch\\n(.*?)\\n```', body, re.S)
+          if not m: sys.exit("No patch block found")
+          open("/tmp/changes.patch","w",encoding="utf-8").write(m.group(1))
+          PY
+        env: { BODY: ${{ github.event.comment.body }} }
+
+      - name: Apply patch
+        run: git apply /tmp/changes.patch
+
+      - name: Commit & push
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          BR="chat-update-${{ github.run_id }}"
+          git checkout -b "$BR"
+          git add -A
+          git -c user.name="chat-bot" -c user.email="bot@example.com" commit -m "Apply chat patch"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BR"
+
+      - name: Open or update PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app.outputs.token }}
+          script: |
+            const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
+            const head = `${owner}:chat-update-${process.env.GITHUB_RUN_ID}`;
+            await github.rest.pulls.create({owner, repo, head, base: "main", title: "Chat patch"});
