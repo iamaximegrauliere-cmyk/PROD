@@ -16,7 +16,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Auth GitHub App (utilise les secrets que tu as déjà mis)
+      # Auth GitHub App (utilise les secrets déjà en place)
       - name: Auth as GitHub App
         uses: tibdex/github-app-token@v2
         id: app
@@ -39,7 +39,6 @@ jobs:
             sys.exit(1)
 
           patch_path = pathlib.Path("/tmp/changes.patch")
-          # Concatène les blocs (permet plusieurs fichiers/patchs)
           content = "\n\n".join(b.strip() for b in blocks)
           patch_path.write_text(content, encoding="utf-8")
           print(f"Patch written to {patch_path}")
@@ -57,7 +56,6 @@ jobs:
         shell: bash
         run: |
           set -e
-          # Essai à blanc (sans modifier l'index)
           if ! git apply --check /tmp/changes.patch; then
             echo "::error::Patch does not apply cleanly. Ensure it's a valid unified git diff (starts with 'diff --git')."
             exit 1
@@ -65,7 +63,6 @@ jobs:
 
       - name: Apply patch
         run: |
-          # Applique et met à jour l'index pour faciliter le commit
           git apply --index /tmp/changes.patch
 
       - name: Create branch and commit
