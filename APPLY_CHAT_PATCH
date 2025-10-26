@@ -1,0 +1,26 @@
+/apply-patch
+
+```patch
+diff --git a/.gitattributes b/.gitattributes
+new file mode 100644
+--- /dev/null
++++ b/.gitattributes
+@@ -0,0 +1,6 @@
++# Normalisation des fins de ligne
++* text=auto eol=lf
++
++# Traite ces formats comme texte pour des diffs plus lisibles
++*.md text
++*.yml text
+diff --git a/README.md b/README.md
+index 1111111..2222222 100644
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,8 @@
+ Status : **Repo Health** → ![Health](https://github.com/iamaximegrauliere-cmyk/PROD/actions/workflows/health.yml/badge.svg)
+ 
+ # PROD
+ 
++> Normalisation activée (`.gitattributes`) pour garantir des fins de ligne cohérentes (LF) et des diffs lisibles.
++
+ Ce dépôt est monitoré quotidiennement. Les automatismes (CI, dépendances, qualité) sont gérés via GitHub Actions et Dependabot.
