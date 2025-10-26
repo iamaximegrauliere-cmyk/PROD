@@ -1,0 +1,80 @@
+name: UA-Prod from Issue
+on:
+  issues:
+    types: [opened]
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+jobs:
+  run:
+    if: contains(github.event.issue.labels.*.name, 'ua-prod')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install openai==1.43.0 pyyaml==6.0.2
+      - name: Install GitHub CLI
+        uses: cli/cli-action@v2
+      - name: Build payload.json from issue form
+        id: build_payload
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          python - << 'PY'
+          import os, json, re, uuid
+          body = os.environ.get("ISSUE_BODY","")
+          def pick(label):
+              rx = re.compile(rf"### {label}\\n([\\s\\S]*?)(?:\\n### |$)")
+              m = rx.search(body)
+              return (m.group(1).strip() if m else "").strip()
+          task_id = pick("Task ID") or f"ua-{uuid.uuid4().hex[:8]}"
+          model = pick("Modèle OpenAI \\(compte prod\\)") or "gpt-4.1"
+          prompt = pick("Brief / Instructions")
+          outputs_raw = pick("Fichiers à produire \\(JSON\\)")
+          branch = pick("Nom de branche \\(optionnel\\)")
+          extra = pick("Notes optionnelles")
+          try:
+              outputs = json.loads(outputs_raw)
+          except Exception:
+              outputs = [
+                {"path":"apps/parlios/README.md","type":"text"},
+                {"path":"apps/parlios/src/index.tsx","type":"text"},
+                {"path":"apps/parlios/package.json","type":"json"}
+              ]
+          payload = {
+            "task_id": task_id,
+            "project": "Parlios",
+            "model": model,
+            "mode": "code",
+            "repo": "iamaximegrauliere-cmyk/PROD",
+            "commit_branch": branch or f"ua-prod-{task_id}",
+            "commit_message": f"UA-Prod: {task_id}",
+            "outputs": outputs,
+            "prompt": prompt or "Aucun brief fourni.",
+            "post_actions": {"open_pr": True, "pr_title": f\"[UA-Prod] {task_id}\", "pr_into": "main"},
+            "meta": {"credit_log": True, "owner": "Max", "source": "issue-form"}
+          }
+          open("payload.json","w",encoding="utf-8").write(json.dumps(payload))
+          print(json.dumps(payload, indent=2))
+          PY
+      - name: Run UA-Prod
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY_PROD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: "UA-Prod"
+          GIT_AUTHOR_EMAIL: "bot@users.noreply.github.com"
+        run: |
+          python .github/ua_prod_runner.py payload.json
+      - name: Upload logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ua-prod-logs-${{ github.run_id }}
+          path: ua-prod-logs/*
