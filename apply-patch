@@ -1,0 +1,146 @@
+/apply-patch
+
+```patch
+diff --git a/.github/workflows/inbox-autopatch.yml b/.github/workflows/inbox-autopatch.yml
+new file mode 100644
+--- /dev/null
++++ b/.github/workflows/inbox-autopatch.yml
+@@ -0,0 +1,120 @@
++name: Chat Inbox Autopatch
++
++on:
++  # Exécute automatiquement toutes les 30 minutes (UTC)
++  schedule:
++    - cron: "*/30 * * * *"
++  # Permet aussi de lancer à la demande
++  workflow_dispatch:
++    inputs:
++      dry_run:
++        description: "Ne fait qu'une vérification (true/false)"
++        required: false
++        default: "false"
++
++permissions:
++  contents: write
++  pull-requests: write
++
++jobs:
++  run:
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v4
++
++      - name: Auth as GitHub App
++        uses: tibdex/github-app-token@v2
++        id: app
++        with:
++          app_id: ${{ secrets.APP_ID }}
++          installation_id: ${{ secrets.APP_INSTALLATION_ID }}
++          private_key: ${{ secrets.APP_PRIVATE_KEY }}
++
++      - name: Ensure .chat exists
++        run: |
++          mkdir -p .chat/archive
++          touch .chat/inbox.diff
++
++      - name: Skip if inbox is empty
++        id: guard
++        shell: bash
++        run: |
++          if [ ! -s ".chat/inbox.diff" ]; then
++            echo "No .chat/inbox.diff to process."
++            echo "has_patch=false" >> $GITHUB_OUTPUT
++          else
++            echo "has_patch=true" >> $GITHUB_OUTPUT
++          fi
++
++      - name: Show inbox diff (preview)
++        if: steps.guard.outputs.has_patch == 'true'
++        run: |
++          echo "------ INBOX DIFF START ------"
++          sed -n '1,200p' .chat/inbox.diff || true
++          echo "------- INBOX DIFF END -------"
++
++      - name: Check patch applies cleanly
++        if: steps.guard.outputs.has_patch == 'true'
++        shell: bash
++        run: |
++          set -e
++          cp .chat/inbox.diff /tmp/changes.patch
++          if ! git apply --check /tmp/changes.patch; then
++            echo "::error::Patch does not apply cleanly. Provide a valid unified git diff (starts with 'diff --git')."
++            exit 1
++          fi
++
++      - name: Exit early on dry-run
++        if: steps.guard.outputs.has_patch == 'true' && inputs.dry_run == 'true'
++        run: echo "Dry-run OK" && exit 0
++
++      - name: Apply patch & prepare archive
++        if: steps.guard.outputs.has_patch == 'true'
++        shell: bash
++        run: |
++          set -e
++          TS="$(date +%Y%m%d-%H%M%S)"
++          cp .chat/inbox.diff /tmp/changes.patch
++          # Applique le patch et indexe les changements
++          git apply --index /tmp/changes.patch
++          # Archive + vide l'inbox pour éviter la ré-application
++          mkdir -p .chat/archive
++          cp .chat/inbox.diff ".chat/archive/${TS}.diff"
++          : > .chat/inbox.diff
++          git add -A
++
++      - name: Create branch, commit & push
++        if: steps.guard.outputs.has_patch == 'true'
++        env:
++          GH_TOKEN: ${{ steps.app.outputs.token }}
++        run: |
++          set -e
++          BR="chat-inbox-${GITHUB_RUN_ID}"
++          git checkout -b "$BR"
++          git config user.name "chat-bot"
++          git config user.email "bot@example.com"
++          git commit -m "Autopatch from .chat/inbox.diff"
++          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BR"
++
++      - name: Open PR
++        if: steps.guard.outputs.has_patch == 'true'
++        uses: actions/github-script@v7
++        with:
++          github-token: ${{ steps.app.outputs.token }}
++          script: |
++            const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
++            const branch = `chat-inbox-${process.env.GITHUB_RUN_ID}`;
++            await github.rest.pulls.create({
++              owner, repo,
++              head: branch,
++              base: "main",
++              title: "Autopatch from .chat/inbox.diff",
++              body: "Patch appliqué automatiquement par le workflow Inbox Autopatch."
++            });
+diff --git a/.chat/README.md b/.chat/README.md
+new file mode 100644
+--- /dev/null
++++ b/.chat/README.md
+@@ -0,0 +1,16 @@
++# Chat Inbox
++
++Déposez ici un patch **unifié git** (fichier `inbox.diff`) commençant par `diff --git`.
++Le workflow `Chat Inbox Autopatch` le vérifiera, l'appliquera, ouvrira une PR,
++puis archivera le fichier dans `./archive/AAAAmmjj-HHMMSS.diff` et videra `inbox.diff`.
++
++Deux façons d'alimenter l'inbox :
++1. **100% depuis le chat** : je te fournis un bloc `diff --git`, tu colles `/apply-patch` et cela actualise `inbox.diff`.
++2. **Via l'UI GitHub** : Editer le fichier `.chat/inbox.diff` et coller le diff.
++
++Ensuite, le workflow programmé (toutes les 30 minutes) traitera automatiquement le contenu.
+diff --git a/.chat/inbox.diff b/.chat/inbox.diff
+new file mode 100644
+--- /dev/null
++++ b/.chat/inbox.diff
+@@ -0,0 +1,3 @@
++# Placez ici un patch unifié (diff --git).
++# Le workflow l'appliquera automatiquement puis videra ce fichier.
++
