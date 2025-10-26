@@ -37,7 +37,6 @@ new file mode 100644
 +- name: low priority
 +  color: 7057ff
 +  description: Nice to have
-+
 diff --git a/.github/labeler.yml b/.github/labeler.yml
 new file mode 100644
 --- /dev/null
@@ -55,17 +54,16 @@ new file mode 100644
 +  - ".editorconfig"
 +  - ".gitattributes"
 +  - ".github/**"
-+
 diff --git a/.github/workflows/sync-labels.yml b/.github/workflows/sync-labels.yml
 new file mode 100644
 --- /dev/null
 +++ b/.github/workflows/sync-labels.yml
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,40 @@
 +name: Sync Labels
 +on:
 +  workflow_dispatch: {}
 +  schedule:
-+    - cron: "0 5 * * MON" # chaque lundi 05:00 UTC (≈07:00 Paris)
++    - cron: "0 5 * * MON" # chaque lundi 05:00 UTC (~07:00 Paris)
 +  push:
 +    paths:
 +      - ".github/labels.yml"
@@ -91,95 +89,3 @@ new file mode 100644
 +          skip_delete: false
 +        env:
 +          GITHUB_TOKEN: ${{ steps.app.outputs.token }}
-+
-diff --git a/.github/workflows/pr-autolabel.yml b/.github/workflows/pr-autolabel.yml
-new file mode 100644
---- /dev/null
-+++ b/.github/workflows/pr-autolabel.yml
-@@ -0,0 +1,25 @@
-+name: PR Auto Label
-+on:
-+  pull_request:
-+    types: [opened, synchronize, reopened]
-+permissions:
-+  contents: read
-+  pull-requests: write
-+jobs:
-+  label:
-+    runs-on: ubuntu-latest
-+    steps:
-+      - uses: actions/labeler@v5
-+        with:
-+          repo-token: ${{ secrets.GITHUB_TOKEN }}
-+          configuration-path: .github/labeler.yml
-+
-diff --git a/.github/workflows/enforce-branch-protection.yml b/.github/workflows/enforce-branch-protection.yml
-new file mode 100644
---- /dev/null
-+++ b/.github/workflows/enforce-branch-protection.yml
-@@ -0,0 +1,66 @@
-+name: Enforce Branch Protection (main)
-+on:
-+  workflow_dispatch: {}
-+permissions:
-+  contents: read
-+jobs:
-+  protect:
-+    runs-on: ubuntu-latest
-+    steps:
-+      - name: Auth as GitHub App
-+        uses: tibdex/github-app-token@v2
-+        id: app
-+        with:
-+          app_id: ${{ secrets.APP_ID }}
-+          installation_id: ${{ secrets.APP_INSTALLATION_ID }}
-+          private_key: ${{ secrets.APP_PRIVATE_KEY }}
-+      - name: Apply protection (best effort)
-+        uses: actions/github-script@v7
-+        env:
-+          TOKEN: ${{ steps.app.outputs.token }}
-+        with:
-+          github-token: ${{ env.TOKEN }}
-+          script: |
-+            const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
-+            const branch = "main";
-+            try {
-+              await github.rest.repos.updateBranchProtection({
-+                owner, repo, branch,
-+                required_status_checks: null,
-+                enforce_admins: true,
-+                restrictions: null,
-+                required_pull_request_reviews: {
-+                  required_approving_review_count: 1,
-+                  dismiss_stale_reviews: false,
-+                  require_code_owner_reviews: false
-+                },
-+                required_conversation_resolution: true
-+              });
-+              core.info("Branch protection applied on 'main'.");
-+            } catch (e) {
-+              core.warning("Could not apply branch protection (App may lack 'Administration').");
-+              core.warning(String(e));
-+            }
-+
-diff --git a/.github/workflows/inbox-autopatch.yml b/.github/workflows/inbox-autopatch.yml
-index 1111111..2222222 100644
---- a/.github/workflows/inbox-autopatch.yml
-+++ b/.github/workflows/inbox-autopatch.yml
-@@ -1,11 +1,11 @@
- name: Chat Inbox Autopatch
- 
- on:
--  # Exécute automatiquement toutes les 30 minutes (UTC)
--  schedule:
--    - cron: "*/30 * * * *"
-+  # Exécute automatiquement toutes les 10 minutes (UTC) pour plus de réactivité
-+  schedule:
-+    - cron: "*/10 * * * *"
-   # Permet aussi de lancer à la demande
-   workflow_dispatch:
-     inputs:
-       dry_run:
-         description: "Ne fait qu'une vérification (true/false)"
-         required: false
-         default: "false"
