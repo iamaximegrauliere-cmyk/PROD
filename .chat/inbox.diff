@@ -1,42 +1,77 @@
 /apply-patch
 
 ```patch
-diff --git a/.github/labels.yml b/.github/labels.yml
+diff --git a/.github/workflows/finalize-bootstrap.yml b/.github/workflows/finalize-bootstrap.yml
 new file mode 100644
 --- /dev/null
-+++ b/.github/labels.yml
-@@ -0,0 +1,74 @@
-+# Label set — lisible, standard, avec couleurs stables
-+- name: bug
-+  color: d73a4a
-+  description: Something isn't working
-+- name: enhancement
-+  color: a2eeef
-+  description: New feature or request
-+- name: chore
-+  color: cfd3d7
-+  description: Maintenance
-+- name: documentation
-+  color: 0075ca
-+  description: Improvements or additions to documentation
-+- name: ci
-+  color: 0e8a16
-+  description: Continuous Integration / Actions
-+- name: test
-+  color: fbca04
-+  description: Tests
-+- name: security
-+  color: 8a2be2
-+  description: Security-related
-+- name: release
-+  color: 5319e7
-+  description: Release management
-+- name: high priority
-+  color: b60205
-+  description: Must be addressed urgently
-+- name: low priority
-+  color: 7057ff
-+  description: Nice to have
++++ b/.github/workflows/finalize-bootstrap.yml
+@@ -0,0 +1,78 @@
++name: Finalize Bootstrap (labels + branch protection)
++
++on:
++  push:
++    branches: [ "main" ]
++  workflow_dispatch: {}
++  schedule:
++    - cron: "15 5 * * MON"   # filet de sécu hebdo (lun 05:15 UTC ~ 07:15 Paris)
++
++permissions:
++  contents: read
++  issues: write
++
++jobs:
++  finalize:
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v4
++
++      - name: Auth as GitHub App
++        uses: tibdex/github-app-token@v2
++        id: app
++        with:
++          app_id: ${{ secrets.APP_ID }}
++          installation_id: ${{ secrets.APP_INSTALLATION_ID }}
++          private_key: ${{ secrets.APP_PRIVATE_KEY }}
++
++      # 1) Synchronise/normalise tous les labels d'après .github/labels.yml
++      - name: Sync labels
++        uses: crazy-max/ghaction-github-labeler@v5
++        with:
++          yaml_file: .github/labels.yml
++          skip_delete: false
++        env:
++          GITHUB_TOKEN: ${{ steps.app.outputs.token }}
++
++      # 2) Applique la protection sur la branche main (best effort)
++      - name: Enforce branch protection (main)
++        uses: actions/github-script@v7
++        env:
++          TOKEN: ${{ steps.app.outputs.token }}
++        with:
++          github-token: ${{ env.TOKEN }}
++          script: |
++            const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
++            const branch = "main";
++            try {
++              await github.rest.repos.updateBranchProtection({
++                owner, repo, branch,
++                required_status_checks: null,
++                enforce_admins: true,
++                restrictions: null,
++                required_pull_request_reviews: {
++                  required_approving_review_count: 1,
++                  dismiss_stale_reviews: false,
++                  require_code_owner_reviews: false
++                },
++                required_conversation_resolution: true
++              });
++              core.info("Branch protection applied on 'main'.");
++            } catch (e) {
++              core.warning("Could not apply branch protection (App may lack 'Administration').");
++              core.warning(String(e));
++            }
++
 diff --git a/.github/labeler.yml b/.github/labeler.yml
 new file mode 100644
 --- /dev/null
@@ -54,38 +89,50 @@ new file mode 100644
 +  - ".editorconfig"
 +  - ".gitattributes"
 +  - ".github/**"
-diff --git a/.github/workflows/sync-labels.yml b/.github/workflows/sync-labels.yml
++
+diff --git a/.github/labels.yml b/.github/labels.yml
 new file mode 100644
 --- /dev/null
-+++ b/.github/workflows/sync-labels.yml
-@@ -0,0 +1,40 @@
-+name: Sync Labels
++++ b/.github/labels.yml
+@@ -0,0 +1,74 @@
++- name: bug               # Something isn't working
++  color: d73a4a
++- name: enhancement       # New feature or request
++  color: a2eeef
++- name: chore             # Maintenance
++  color: cfd3d7
++- name: documentation     # Docs changes
++  color: 0075ca
++- name: ci                # CI / Actions
++  color: 0e8a16
++- name: test              # Tests
++  color: fbca04
++- name: security          # Security-related
++  color: 8a2be2
++- name: release           # Release management
++  color: 5319e7
++- name: high priority     # Must be addressed urgently
++  color: b60205
++- name: low priority      # Nice to have
++  color: 7057ff
++
+diff --git a/.github/workflows/pr-autolabel.yml b/.github/workflows/pr-autolabel.yml
+new file mode 100644
+--- /dev/null
++++ b/.github/workflows/pr-autolabel.yml
+@@ -0,0 +1,25 @@
++name: PR Auto Label
 +on:
-+  workflow_dispatch: {}
-+  schedule:
-+    - cron: "0 5 * * MON" # chaque lundi 05:00 UTC (~07:00 Paris)
-+  push:
-+    paths:
-+      - ".github/labels.yml"
++  pull_request:
++    types: [opened, synchronize, reopened]
 +permissions:
 +  contents: read
-+  issues: write
++  pull-requests: write
 +jobs:
-+  apply:
++  label:
 +    runs-on: ubuntu-latest
 +    steps:
-+      - uses: actions/checkout@v4
-+      - name: Auth as GitHub App
-+        uses: tibdex/github-app-token@v2
-+        id: app
++      - uses: actions/labeler@v5
 +        with:
-+          app_id: ${{ secrets.APP_ID }}
-+          installation_id: ${{ secrets.APP_INSTALLATION_ID }}
-+          private_key: ${{ secrets.APP_PRIVATE_KEY }}
-+      - name: Sync labels from .github/labels.yml
-+        uses: crazy-max/ghaction-github-labeler@v5
-+        with:
-+          yaml_file: .github/labels.yml
-+          skip_delete: false
-+        env:
-+          GITHUB_TOKEN: ${{ steps.app.outputs.token }}
++          repo-token: ${{ secrets.GITHUB_TOKEN }}
++          configuration-path: .github/labeler.yml
