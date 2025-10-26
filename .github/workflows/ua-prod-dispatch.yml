@@ -1,0 +1,32 @@
+name: UA-Prod via Dispatch
+on:
+  repository_dispatch:
+    types: [ua-prod-task]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: |
+          python -m pip install --upgrade pip
+          pip install openai==1.43.0 pyyaml==6.0.2
+      - uses: cli/cli-action@v2
+      - name: Write payload
+        run: |
+          echo '${{ toJson(github.event.client_payload) }}' > payload.json
+          cat payload.json
+      - name: Run UA-Prod
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY_PROD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_AUTHOR_NAME: "UA-Prod"
+          GIT_AUTHOR_EMAIL: "bot@users.noreply.github.com"
+        run: |
+          python .github/ua_prod_runner.py payload.json
