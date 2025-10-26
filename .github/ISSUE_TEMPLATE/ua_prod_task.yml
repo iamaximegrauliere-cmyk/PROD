@@ -1,0 +1,45 @@
+name: UA-Prod Task
+description: Déclencher une tâche de production UA-Prod (API-only) sans CLI
+title: "[UA-Prod] Nouvelle tâche"
+labels: ["ua-prod"]
+body:
+  - type: input
+    id: task_id
+    attributes:
+      label: Task ID
+      value: parlios-hello
+    validations: { required: true }
+  - type: dropdown
+    id: model
+    attributes:
+      label: Modèle OpenAI (compte prod)
+      options: [gpt-4.1, gpt-4o, gpt-4.1-mini]
+      default: 0
+    validations: { required: true }
+  - type: textarea
+    id: prompt
+    attributes:
+      label: Brief / Instructions
+      value: |
+        Créer un squelette Vite+React TypeScript minimal (index.tsx, package.json scripts dev/build/preview, README run). Aucune lib exotique.
+    validations: { required: true }
+  - type: textarea
+    id: outputs
+    attributes:
+      label: Fichiers à produire (JSON)
+      value: |
+        [
+          {"path":"apps/parlios/README.md","type":"text"},
+          {"path":"apps/parlios/src/index.tsx","type":"text"},
+          {"path":"apps/parlios/package.json","type":"json"}
+        ]
+    validations: { required: true }
+  - type: input
+    id: branch
+    attributes:
+      label: Nom de branche (optionnel)
+      placeholder: feat/parlios-hello
+  - type: textarea
+    id: extra
+    attributes:
+      label: Notes optionnelles
