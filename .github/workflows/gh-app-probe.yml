@@ -1,0 +1,72 @@
+name: GH App Probe (cross-repo)
+
+on:
+  workflow_dispatch:
+    inputs:
+      owner:
+        description: "Organisation/compte du dépôt cible"
+        required: true
+        default: "iamaximegrauliere-cmyk"
+      repo:
+        description: "Nom du dépôt cible"
+        required: true
+        default: "Parlios-Engine"
+      ref:
+        description: "Ref/branche (facultatif, ex: main)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1) Auth en GitHub App (réutilise tes secrets existants)
+      - name: Auth as GitHub App
+        uses: tibdex/github-app-token@v2
+        id: app
+        with:
+          app_id: ${{ secrets.APP_ID }}
+          installation_id: ${{ secrets.APP_INSTALLATION_ID }}
+          private_key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Check access to target repo
+        id: check
+        env:
+          TOKEN: ${{ steps.app.outputs.token }}
+          OWNER: ${{ github.event.inputs.owner }}
+          REPO:  ${{ github.event.inputs.repo }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o resp.json -w '%{http_code}' \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$OWNER/$REPO")
+          echo "HTTP=$code"
+          cat resp.json | jq '{full_name, private, default_branch, permissions}'
+          test "$code" = "200"
+
+      - name: List root directory via API
+        env:
+          TOKEN: ${{ steps.app.outputs.token }}
+          OWNER: ${{ github.event.inputs.owner }}
+          REPO:  ${{ github.event.inputs.repo }}
+          REF:   ${{ github.event.inputs.ref }}
+        run: |
+          set -euo pipefail
+          url="https://api.github.com/repos/$OWNER/$REPO/contents"
+          [ -n "$REF" ] && url="$url?ref=$REF"
+          curl -sS -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" "$url" \
+            | jq -r '.[] | [.type, .name, (.size|tostring)] | @tsv' \
+            | awk 'BEGIN{print "TYPE\tNAME\tSIZE"} {print}' > index.tsv
+          cat index.tsv
+
+      - name: Upload artifact (index)
+        uses: actions/upload-artifact@v4
+        with:
+          name: probe-${{ github.run_id }}
+          path: index.tsv
